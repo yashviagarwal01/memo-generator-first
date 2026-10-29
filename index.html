@@ -1,0 +1,409 @@
+<!-- ===================================================================
+     EMBED FRAGMENT: Build vs Buy "Memo to your CFO" generator (Visdum)
+     Paste as-is into the blog. No doctype/html/head/body. Fonts come from the host.
+     Tokens are scoped to .vmg-stage. JS is an IIFE that boots over .vmg-stage.
+
+     LEAD CAPTURE HOOK (for marketing ops):
+       When a visitor submits the email form, the script
+       1) calls window.VisdumMemoGate(payload) if it exists (may return a Promise), and
+       2) dispatches a "visdum:memo-lead" CustomEvent on the .vmg-stage element (bubbles).
+       payload = { name, title, email, company, inputs:{...}, score, band, buildTotal, buyTotal }
+       Wire either one to the HubSpot Forms API. Nothing is sent anywhere by default.
+
+     PDF BUTTON: shown when the wrapper has data-print="on" (blog). It opens the memo in a
+     new window and calls print, where the reader can save as PDF.
+     =================================================================== -->
+<style>
+.vmg-stage{
+  --ink:#1A1A22; --ink-soft:#444A57; --ink-muted:#686D7A; --navy:#20406C;
+  --accent:#4856DE; --accent-2:#6E7CF0; --accent-3:#9E92EE;
+  --accent-wash:#EEF0FD; --line:#E2DDEF; --line-soft:#ECE8F6; --field:#F7F5FC;
+  --flag:#A9503C; --flag-wash:#FBEFEA; --ok:#2F6B4A; --ok-wash:#EAF4EE; --warn:#8A6417; --warn-wash:#FBF3E2;
+  --font-display:'Playfair Display',Georgia,serif;
+  --font-body:'Hanken Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;
+  font-family:var(--font-body); color:var(--ink); line-height:1.5;
+  width:100%; max-width:836px; margin:0 auto;
+  background:#f4f2fe;
+  background-image:radial-gradient(circle,rgba(72,86,222,.10) 1.4px,rgba(72,86,222,0) 1.6px);
+  background-size:24px 24px;
+  border:1px solid var(--line); border-radius:20px; padding:28px 20px 24px;
+}
+.vmg-stage, .vmg-stage *{box-sizing:border-box}
+.vmg-stage .vmg-eyebrow{text-align:center;font-size:11.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 8px}
+.vmg-stage .vmg-h{text-align:center;font-family:var(--font-display);font-size:27px;line-height:1.2;font-weight:700;margin:0 0 6px;text-wrap:balance}
+.vmg-stage .vmg-h em{font-style:italic;color:var(--accent)}
+.vmg-stage .vmg-dek{text-align:center;font-size:14.5px;color:var(--ink-soft);margin:0 auto 20px;max-width:560px}
+
+.vmg-stage .vmg-grid{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.vmg-stage .vmg-panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;min-width:0}
+.vmg-stage .vmg-inputs{flex:1 1 340px}
+.vmg-stage .vmg-results{flex:1 1 300px}
+.vmg-stage .vmg-ptitle{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-muted);margin:0 0 12px}
+
+.vmg-stage .vmg-row{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}
+.vmg-stage .vmg-f{flex:1 1 140px;display:flex;flex-direction:column;gap:5px;min-width:0}
+.vmg-stage .vmg-f label,.vmg-stage .vmg-q{font-size:12.5px;font-weight:700;color:var(--ink-soft)}
+.vmg-stage .vmg-f input,.vmg-stage .vmg-f select{font:inherit;font-size:14px;color:var(--ink);background:var(--field);border:1px solid var(--line);border-radius:10px;padding:9px 11px;width:100%;font-variant-numeric:tabular-nums}
+.vmg-stage .vmg-f input:focus,.vmg-stage .vmg-f select:focus,.vmg-stage .vmg-seg button:focus-visible,.vmg-stage .vmg-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.vmg-stage .vmg-yn{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid var(--line-soft)}
+.vmg-stage .vmg-yn .vmg-q{font-weight:600;color:var(--ink)}
+.vmg-stage .vmg-seg{display:inline-flex;flex:none;background:var(--field);border:1px solid var(--line);border-radius:999px;padding:3px}
+.vmg-stage .vmg-seg button{font:inherit;font-size:12.5px;font-weight:700;border:0;background:transparent;color:var(--ink-muted);padding:5px 12px;border-radius:999px;cursor:pointer}
+.vmg-stage .vmg-seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+
+.vmg-stage details.vmg-adv{margin-top:10px;border-top:1px solid var(--line-soft);padding-top:10px}
+.vmg-stage details.vmg-adv summary{cursor:pointer;font-size:12.5px;font-weight:700;color:var(--accent)}
+.vmg-stage details.vmg-adv .vmg-row{margin-top:10px}
+.vmg-stage .vmg-hint{font-size:11.5px;color:var(--ink-muted);margin:4px 0 0}
+
+/* results */
+.vmg-stage .vmg-band{border-radius:12px;padding:12px 14px;margin-bottom:14px}
+.vmg-stage .vmg-band .vmg-bl{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;margin:0 0 3px}
+.vmg-stage .vmg-band .vmg-bv{font-size:19px;font-weight:800;margin:0;line-height:1.25}
+.vmg-stage .vmg-band .vmg-bs{font-size:12.5px;margin:4px 0 0}
+.vmg-stage .vmg-band.buy{background:var(--accent-wash);color:#2E3AAE}
+.vmg-stage .vmg-band.hybrid{background:var(--warn-wash);color:var(--warn)}
+.vmg-stage .vmg-band.build{background:var(--ok-wash);color:var(--ok)}
+.vmg-stage .vmg-bars{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
+.vmg-stage .vmg-bar .vmg-bt{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px}
+.vmg-stage .vmg-bar .vmg-bt b{font-variant-numeric:tabular-nums}
+.vmg-stage .vmg-track{height:10px;background:var(--line-soft);border-radius:999px;overflow:hidden}
+.vmg-stage .vmg-fill{height:100%;border-radius:999px;transition:width .4s ease}
+.vmg-stage .vmg-fill.b{background:var(--flag)}
+.vmg-stage .vmg-fill.v{background:linear-gradient(90deg,var(--accent),var(--accent-2))}
+.vmg-stage .vmg-tw{overflow-x:auto}
+.vmg-stage table.vmg-t{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+.vmg-stage table.vmg-t th,.vmg-stage table.vmg-t td{padding:6px 4px;text-align:right;border-bottom:1px solid var(--line-soft);white-space:nowrap}
+.vmg-stage table.vmg-t th:first-child,.vmg-stage table.vmg-t td:first-child{text-align:left}
+.vmg-stage table.vmg-t th{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-muted);font-weight:800}
+.vmg-stage table.vmg-t tr.tot td{font-weight:800;border-bottom:0}
+.vmg-stage .vmg-score{display:flex;justify-content:space-between;align-items:baseline;margin-top:12px;font-size:13px;color:var(--ink-soft)}
+.vmg-stage .vmg-score b{font-size:18px;color:var(--ink);font-variant-numeric:tabular-nums}
+
+/* gate + memo */
+.vmg-stage .vmg-gate{margin-top:16px;background:var(--navy);color:#fff;border-radius:16px;padding:18px}
+.vmg-stage .vmg-gate h4{font-family:var(--font-display);font-size:21px;margin:0 0 4px;font-weight:700}
+.vmg-stage .vmg-gate p{margin:0 0 12px;font-size:13.5px;color:#C9D3EC}
+.vmg-stage .vmg-gate .vmg-f label{color:#DCE3F5}
+.vmg-stage .vmg-gate .vmg-f input{background:#fff;border-color:#fff}
+.vmg-stage .vmg-err{color:#FFC9B8;font-size:12.5px;font-weight:700;min-height:1em;margin:4px 0 0}
+.vmg-stage .vmg-btn{font:inherit;font-size:14px;font-weight:800;border:0;border-radius:10px;padding:11px 18px;cursor:pointer}
+.vmg-stage .vmg-btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff}
+.vmg-stage .vmg-btn.ghost{background:#fff;color:var(--accent);border:1px solid var(--line)}
+.vmg-stage .vmg-fine{font-size:11.5px;color:#AEB9D6;margin:10px 0 0}
+
+.vmg-stage .vmg-memowrap{margin-top:16px}
+.vmg-stage .vmg-actions{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;align-items:center}
+.vmg-stage .vmg-toast{font-size:12.5px;font-weight:700;color:var(--ok)}
+.vmg-stage .vmg-memo{background:#fff;border:1px solid var(--line);border-radius:6px;padding:26px 24px;box-shadow:0 18px 40px -26px rgba(32,64,108,.35);font-size:14px;color:var(--ink)}
+.vmg-stage .vmg-memo .m-hd{border-bottom:2px solid var(--ink);padding-bottom:12px;margin-bottom:16px}
+.vmg-stage .vmg-memo .m-kicker{font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-muted);margin:0 0 8px}
+.vmg-stage .vmg-memo .m-meta{display:grid;grid-template-columns:70px 1fr;gap:3px 10px;font-size:13.5px}
+.vmg-stage .vmg-memo .m-meta span:nth-child(odd){font-weight:800;color:var(--ink-muted);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;padding-top:2px}
+.vmg-stage .vmg-memo h5{font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin:18px 0 6px}
+.vmg-stage .vmg-memo .m-p{margin:0 0 8px;max-width:65ch}
+.vmg-stage .vmg-memo ul.m-ul{margin:0;padding-left:18px}
+.vmg-stage .vmg-memo ul.m-ul li{margin:0 0 5px}
+.vmg-stage .vmg-memo .m-foot{margin-top:18px;padding-top:10px;border-top:1px solid var(--line-soft);font-size:11.5px;color:var(--ink-muted)}
+.vmg-stage [hidden]{display:none!important}
+
+@media (max-width:600px){
+  .vmg-stage{padding:22px 12px 18px}
+  .vmg-stage .vmg-h{font-size:22px}
+  .vmg-stage .vmg-memo{padding:18px 14px}
+}
+@media (prefers-reduced-motion:reduce){ .vmg-stage .vmg-fill{transition:none} }
+</style>
+
+<div class="vmg-stage" data-print="on">
+  <p class="vmg-eyebrow">Build vs buy commission software</p>
+  <h3 class="vmg-h">Write the <em>memo to your CFO</em> in two minutes</h3>
+  <p class="vmg-dek">Enter your team's numbers. Get a 3-year cost comparison, a build vs buy score, and a ready-to-send decision memo.</p>
+
+  <div class="vmg-grid">
+    <form class="vmg-panel vmg-inputs" novalidate>
+      <p class="vmg-ptitle">Your commission setup</p>
+      <div class="vmg-row">
+        <div class="vmg-f"><label for="vmg-payees">Commissioned payees</label><input id="vmg-payees" data-k="payees" type="number" min="5" max="5000" value="90" inputmode="numeric"></div>
+        <div class="vmg-f"><label for="vmg-plans">Comp plans</label><input id="vmg-plans" data-k="plans" type="number" min="1" max="50" value="3" inputmode="numeric"></div>
+        <div class="vmg-f"><label for="vmg-changes">Plan changes per year</label><input id="vmg-changes" data-k="changes" type="number" min="0" max="24" value="3" inputmode="numeric"></div>
+      </div>
+      <div class="vmg-row">
+        <div class="vmg-f"><label for="vmg-crm">CRM</label><select id="vmg-crm" data-k="crm"><option>HubSpot</option><option>Salesforce</option><option>Other CRM</option></select></div>
+        <div class="vmg-f"><label for="vmg-erp">ERP or accounting</label><select id="vmg-erp" data-k="erp"><option>NetSuite</option><option>QuickBooks</option><option>Sage Intacct</option><option>Other ERP</option></select></div>
+      </div>
+
+      <div class="vmg-yn"><span class="vmg-q">Are your financials audited (or are you pre-IPO)?</span><span class="vmg-seg" data-k="audited"><button type="button" data-v="1" aria-pressed="true">Yes</button><button type="button" data-v="0" aria-pressed="false">No</button></span></div>
+      <div class="vmg-yn"><span class="vmg-q">Do you capitalize commissions under ASC 340-40?</span><span class="vmg-seg" data-k="asc"><button type="button" data-v="1" aria-pressed="true">Yes</button><button type="button" data-v="0" aria-pressed="false">No</button></span></div>
+      <div class="vmg-yn"><span class="vmg-q">Do reps need self-serve statements and dashboards?</span><span class="vmg-seg" data-k="reps"><button type="button" data-v="1" aria-pressed="true">Yes</button><button type="button" data-v="0" aria-pressed="false">No</button></span></div>
+      <div class="vmg-yn"><span class="vmg-q">Can you name an engineering owner for the next 3 years?</span><span class="vmg-seg" data-k="owner"><button type="button" data-v="1" aria-pressed="false">Yes</button><button type="button" data-v="0" aria-pressed="true">No</button></span></div>
+      <div class="vmg-yn"><span class="vmg-q">Is commission logic part of your product?</span><span class="vmg-seg" data-k="product"><button type="button" data-v="1" aria-pressed="false">Yes</button><button type="button" data-v="0" aria-pressed="true">No</button></span></div>
+      <div class="vmg-yn"><span class="vmg-q">Do you need this live within a quarter?</span><span class="vmg-seg" data-k="urgent"><button type="button" data-v="1" aria-pressed="true">Yes</button><button type="button" data-v="0" aria-pressed="false">No</button></span></div>
+
+      <details class="vmg-adv">
+        <summary>Adjust cost assumptions</summary>
+        <div class="vmg-row">
+          <div class="vmg-f"><label for="vmg-fte">Fully loaded cost per FTE ($)</label><input id="vmg-fte" data-k="fte" type="number" min="50000" max="500000" step="1000" value="172000" inputmode="numeric"></div>
+          <div class="vmg-f"><label for="vmg-price">Software price per payee per month ($)</label><input id="vmg-price" data-k="price" type="number" min="5" max="300" value="50" inputmode="numeric"></div>
+        </div>
+        <div class="vmg-yn"><span class="vmg-q">Include a downside case (build runs 45% over)?</span><span class="vmg-seg" data-k="downside"><button type="button" data-v="1" aria-pressed="false">Yes</button><button type="button" data-v="0" aria-pressed="true">No</button></span></div>
+        <p class="vmg-hint">Defaults: $172K per FTE (BLS median data scientist pay, divided by wages' 70% share of total compensation). $50 per payee per month is the midpoint of CFO Shortlist's $25 to $75 range.</p>
+      </details>
+    </form>
+
+    <div class="vmg-panel vmg-results" aria-live="polite">
+      <p class="vmg-ptitle">Your result</p>
+      <div class="vmg-band buy" data-o="band"><p class="vmg-bl">Recommendation</p><p class="vmg-bv" data-o="bandText">Buy commission software</p><p class="vmg-bs" data-o="bandSub"></p></div>
+      <div class="vmg-bars">
+        <div class="vmg-bar"><div class="vmg-bt"><span>Build in-house, 3 years</span><b data-o="buildTotal">$404K</b></div><div class="vmg-track"><div class="vmg-fill b" data-o="buildBar" style="width:100%"></div></div></div>
+        <div class="vmg-bar"><div class="vmg-bt"><span>Buy software, 3 years</span><b data-o="buyTotal">$237K</b></div><div class="vmg-track"><div class="vmg-fill v" data-o="buyBar" style="width:59%"></div></div></div>
+      </div>
+      <div class="vmg-tw">
+        <table class="vmg-t">
+          <thead><tr><th>Cost</th><th>Year 1</th><th>Year 2</th><th>Year 3</th></tr></thead>
+          <tbody data-o="yearRows"></tbody>
+        </table>
+      </div>
+      <div class="vmg-score"><span>Build vs buy score (8 to 40)</span><b data-o="score">13</b></div>
+    </div>
+  </div>
+
+  <form class="vmg-gate" novalidate data-o="gate">
+    <h4>Get your memo to the CFO</h4>
+    <p>We will fill in your name and company and generate the full memo: recommendation, 3-year cost table, risks, and next steps.</p>
+    <div class="vmg-row">
+      <div class="vmg-f"><label for="vmg-name">Your name</label><input id="vmg-name" data-g="name" type="text" autocomplete="name" required></div>
+      <div class="vmg-f"><label for="vmg-title">Your title</label><input id="vmg-title" data-g="title" type="text" autocomplete="organization-title" placeholder="Director of RevOps"></div>
+    </div>
+    <div class="vmg-row">
+      <div class="vmg-f"><label for="vmg-email">Work email</label><input id="vmg-email" data-g="email" type="email" autocomplete="email" required></div>
+      <div class="vmg-f"><label for="vmg-company">Company</label><input id="vmg-company" data-g="company" type="text" autocomplete="organization" required></div>
+    </div>
+    <button class="vmg-btn primary" type="submit">Generate my memo</button>
+    <p class="vmg-err" data-o="err"></p>
+    <p class="vmg-fine" data-o="fine">Visdum will email you a copy and may follow up about your evaluation. No spam.</p>
+  </form>
+
+  <div class="vmg-memowrap" data-o="memoWrap" hidden>
+    <div class="vmg-actions">
+      <button class="vmg-btn primary" type="button" data-a="copy">Copy memo</button>
+      <button class="vmg-btn ghost" type="button" data-a="pdf">Save as PDF</button>
+      <button class="vmg-btn ghost" type="button" data-a="edit">Change my numbers</button>
+      <span class="vmg-toast" data-o="toast" role="status"></span>
+    </div>
+    <article class="vmg-memo" data-o="memo"></article>
+  </div>
+</div>
+
+<script>
+(function(){
+  var stages = document.querySelectorAll('.vmg-stage');
+  Array.prototype.forEach.call(stages, function(root){
+    if (root.getAttribute('data-vmg-booted')) return;
+    root.setAttribute('data-vmg-booted','1');
+    var $ = function(s){ return root.querySelector(s); };
+    var out = function(k){ return root.querySelector('[data-o="'+k+'"]'); };
+    var lead = null;
+
+    if (root.getAttribute('data-print') !== 'on') { var pb = root.querySelector('[data-a="pdf"]'); if (pb) pb.hidden = true; }
+    if (root.getAttribute('data-preview') === 'on') { out('fine').textContent = 'Preview mode: the form unlocks the memo here and sends nothing.'; }
+
+    function num(k, d){ var el = root.querySelector('[data-k="'+k+'"]'); var v = parseFloat(el && el.value); return isFinite(v) ? v : d; }
+    function seg(k){ var b = root.querySelector('[data-k="'+k+'"] [aria-pressed="true"]'); return b ? b.getAttribute('data-v') === '1' : false; }
+    function sel(k){ var el = root.querySelector('[data-k="'+k+'"]'); return el ? el.value : ''; }
+    function clamp(v,a,b){ return Math.min(b, Math.max(a, v)); }
+    function k$(n){ return '$' + (n >= 1e6 ? (n/1e6).toFixed(2) + 'M' : Math.round(n/1000) + 'K'); }
+    function full$(n){ return '$' + Math.round(n).toLocaleString('en-US'); }
+    function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+    function model(){
+      var i = {
+        payees: clamp(Math.round(num('payees',90)),5,5000), plans: clamp(Math.round(num('plans',3)),1,50),
+        changes: clamp(Math.round(num('changes',3)),0,24), crm: sel('crm'), erp: sel('erp'),
+        audited: seg('audited'), asc: seg('asc'), reps: seg('reps'), owner: seg('owner'),
+        product: seg('product'), urgent: seg('urgent'), downside: seg('downside'),
+        fte: clamp(num('fte',172000),50000,500000), price: clamp(num('price',50),5,300)
+      };
+      var over = i.downside ? 1.45 : 1;
+      var init = 0.25 * (1 + 0.08 * Math.max(0, i.plans - 3));
+      var upkeep = 0.15 + 0.05 * i.changes + (0.1/90) * i.payees;
+      var adminB = 0.05 + (0.2/90) * i.payees;
+      var audit = i.asc ? 0.05 : (i.audited ? 0.03 : 0.02);
+      var runB = (upkeep + adminB + audit) * i.fte;
+      var b = [ (init * i.fte + runB) * over, runB * over, runB * over ];
+      var impl = clamp(10000 + 150 * i.payees, 10000, 30000);
+      var sub = i.payees * i.price * 12;
+      var adminV = (0.05 + (0.05/90) * i.payees) * i.fte;
+      var v = [ impl + sub + adminV, sub + adminV, sub + adminV ];
+
+      var s = [
+        { c:'Commission logic is a product differentiator', v: i.product ? 5 : 1 },
+        { c:'Plan changes per year', v: i.changes >= 3 ? 1 : i.changes === 2 ? 2 : i.changes === 1 ? 3 : 5 },
+        { c:'Payee count', v: i.payees < 25 ? 5 : i.payees < 40 ? 3 : i.payees < 100 ? 2 : 1 },
+        { c:'Committed engineering owner for 3+ years', v: i.owner ? 4 : 1 },
+        { c:'Audit and SOX exposure', v: i.audited ? 1 : 4 },
+        { c:'ASC 340-40 capitalization', v: i.asc ? 1 : 4 },
+        { c:'Rep transparency need', v: i.reps ? 1 : 4 },
+        { c:'Time-to-value urgency', v: i.urgent ? 1 : 4 }
+      ];
+      var score = s.reduce(function(a,x){ return a + x.v; }, 0);
+      var band = score <= 19 ? 'buy' : score <= 31 ? 'hybrid' : 'build';
+      return { i:i, b:b, v:v, bt:b[0]+b[1]+b[2], vt:v[0]+v[1]+v[2], s:s, score:score, band:band,
+               parts:{ init:init*i.fte*over, upkeep:upkeep*i.fte*over, adminB:adminB*i.fte*over, audit:audit*i.fte*over, impl:impl, sub:sub, adminV:adminV } };
+    }
+
+    var BAND = {
+      buy:    { t:'Buy commission software', s:'Your plans change often enough that a build would stay on the engineering roadmap for years.' },
+      hybrid: { t:'Hybrid: buy the engine, own the design', s:'Buy calculation, controls and accounting outputs. Keep plan design and data definitions in-house.' },
+      build:  { t:'Building is defensible', s:'Only if the engineering owner and budget are funded for three years.' }
+    };
+
+    function render(){
+      var m = model();
+      var bandEl = out('band'); bandEl.className = 'vmg-band ' + m.band;
+      out('bandText').textContent = BAND[m.band].t;
+      out('bandSub').textContent = BAND[m.band].s;
+      out('buildTotal').textContent = k$(m.bt);
+      out('buyTotal').textContent = k$(m.vt);
+      var mx = Math.max(m.bt, m.vt);
+      out('buildBar').style.width = Math.round(m.bt / mx * 100) + '%';
+      out('buyBar').style.width = Math.round(m.vt / mx * 100) + '%';
+      out('yearRows').innerHTML =
+        '<tr><td>Build</td><td>'+k$(m.b[0])+'</td><td>'+k$(m.b[1])+'</td><td>'+k$(m.b[2])+'</td></tr>' +
+        '<tr><td>Buy</td><td>'+k$(m.v[0])+'</td><td>'+k$(m.v[1])+'</td><td>'+k$(m.v[2])+'</td></tr>' +
+        '<tr class="tot"><td>Difference</td><td colspan="3">' + (m.bt >= m.vt ? 'Buying saves ' + k$(m.bt - m.vt) : 'Building saves ' + k$(m.vt - m.bt)) + ' over 3 years</td></tr>';
+      out('score').textContent = m.score;
+      if (lead) out('memo').innerHTML = memoHTML(m);
+      return m;
+    }
+
+    function risks(m){
+      var i = m.i, r = [];
+      r.push('Version one would cover data ingestion and plan logic. Recompute, controls, rep statements and accounting outputs would stay on the engineering roadmap.');
+      if (i.changes > 0) r.push('We change plans about ' + i.changes + ' time' + (i.changes === 1 ? '' : 's') + ' a year. In a build, each change is a development and testing cycle, and retroactive changes need plan versioning and earned-minus-paid netting.');
+      r.push('Every ' + i.crm + ' or ' + i.erp + ' schema change can silently break crediting and needs an engineer to fix.');
+      if (i.asc) r.push('ASC 340-40 requires capitalized commission schedules. A build that only calculates payouts leaves finance rebuilding amortization schedules and journal entries by hand.');
+      if (i.audited) r.push('Auditors will ask for a change log showing who changed a rate, when and why. Most first builds do not record this.');
+      if (!i.owner) r.push('We cannot name a long-term engineering owner, so the build becomes a key-person risk the day its builder changes teams.');
+      return r;
+    }
+
+    function memoHTML(m){
+      var i = m.i, L = lead || {};
+      var d = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+      var rec = m.band === 'buy'
+        ? 'I recommend we buy commission software rather than build our own commission engine.'
+        : m.band === 'hybrid'
+        ? 'I recommend a hybrid approach: buy a commission platform for calculation, controls and accounting outputs, and keep plan design and data definitions in-house.'
+        : 'Building our own commission engine is defensible for us, provided we fund a dedicated engineering owner for at least three years.';
+      var diff = m.bt >= m.vt
+        ? 'Over three years, building costs an estimated ' + full$(m.bt) + ' against ' + full$(m.vt) + ' to buy, a difference of ' + full$(m.bt - m.vt) + '.'
+        : 'Over three years, building costs an estimated ' + full$(m.bt) + ' against ' + full$(m.vt) + ' to buy, so a build saves about ' + full$(m.vt - m.bt) + ' if it stays on schedule.';
+      var rows = function(a){ return '<td>'+full$(a[0])+'</td><td>'+full$(a[1])+'</td><td>'+full$(a[2])+'</td>'; };
+      var sc = m.s.map(function(x){ return '<tr><td>'+esc(x.c)+'</td><td>'+x.v+'</td></tr>'; }).join('');
+      return '' +
+      '<div class="m-hd"><p class="m-kicker">Memo</p><div class="m-meta">' +
+        '<span>To</span><span>Chief Financial Officer' + (L.company ? ', ' + esc(L.company) : '') + '</span>' +
+        '<span>From</span><span>' + esc(L.name || '') + (L.title ? ', ' + esc(L.title) : '') + '</span>' +
+        '<span>Date</span><span>' + d + '</span>' +
+        '<span>Re</span><span>Build vs buy decision for commission calculation</span>' +
+      '</div></div>' +
+      '<h5>Recommendation</h5><p class="m-p">' + rec + ' ' + diff + ' Our build vs buy score is ' + m.score + ' out of 40, which falls in the "' + BAND[m.band].t.toLowerCase() + '" band.</p>' +
+      '<h5>What we evaluated</h5><p class="m-p">' + i.payees + ' commissioned payees on ' + i.plans + ' plan' + (i.plans === 1 ? '' : 's') + ', about ' + i.changes + ' plan change' + (i.changes === 1 ? '' : 's') + ' a year, with data in ' + esc(i.crm) + ' and ' + esc(i.erp) + '.' + (i.asc ? ' We capitalize commissions under ASC 340-40.' : '') + '</p>' +
+      '<h5>Three-year cost comparison</h5><div class="vmg-tw"><table class="vmg-t"><thead><tr><th>Option</th><th>Year 1</th><th>Year 2</th><th>Year 3</th></tr></thead><tbody>' +
+        '<tr><td>Build in-house</td>' + rows(m.b) + '</tr><tr><td>Buy software</td>' + rows(m.v) + '</tr>' +
+        '<tr class="tot"><td>3-year total</td><td colspan="3">Build ' + full$(m.bt) + ' / Buy ' + full$(m.vt) + '</td></tr></tbody></table></div>' +
+      '<p class="m-p" style="margin-top:8px">Build includes the initial build (' + full$(m.parts.init) + '), engineering upkeep (' + full$(m.parts.upkeep) + ' a year), reconciliation and admin time (' + full$(m.parts.adminB) + ' a year) and audit preparation (' + full$(m.parts.audit) + ' a year)' + (i.downside ? ', with a 45% overrun applied' : '') + '. Buy includes implementation (' + full$(m.parts.impl) + ', one time), subscription (' + full$(m.parts.sub) + ' a year) and internal admin (' + full$(m.parts.adminV) + ' a year).</p>' +
+      '<h5>Why building is riskier than the first version suggests</h5><ul class="m-ul">' + risks(m).map(function(x){ return '<li>'+esc(x)+'</li>'; }).join('') + '</ul>' +
+      '<h5>What we keep in-house either way</h5><ul class="m-ul"><li>Plan design and incentive strategy</li><li>Definitions of bookings, ARR and new logos</li><li>Approval policy and dispute rules</li></ul>' +
+      '<h5>Proposed next steps</h5><ul class="m-ul">' +
+        (m.band === 'build'
+          ? '<li>Name the engineering owner and fund the role for three years.</li><li>Scope all six layers (data, plan logic, recompute, controls, rep statements, accounting outputs) before writing code.</li><li>Benchmark the plan against one commission platform, such as Visdum, as a fallback.</li>'
+          : '<li>Shortlist two or three commission platforms. Visdum goes live in 2 to 4 weeks and connects to ' + esc(i.crm) + ' and ' + esc(i.erp) + '.</li><li>Ask each vendor to build our most complex plan in a live demo.</li><li>Run one past commission cycle in parallel and reconcile it against our current numbers.</li><li>Confirm ASC 340-40 amortization output with our controller before signing.</li>') +
+      '</ul>' +
+      '<h5>Scorecard detail</h5><div class="vmg-tw"><table class="vmg-t"><thead><tr><th>Criterion (1 favors buying, 5 favors building)</th><th>Score</th></tr></thead><tbody>' + sc + '<tr class="tot"><td>Total</td><td>' + m.score + ' / 40</td></tr></tbody></table></div>' +
+      '<p class="m-foot">Assumptions: $' + Math.round(i.fte/1000) + 'K per FTE (default from BLS data scientist median pay, $120,230 in May 2025, divided by wages\' 70% share of total compensation); $' + i.price + ' per payee per month (CFO Shortlist range: $25 to $75); implementation $10K to $30K (CFO Shortlist). Downside case from McKinsey and Oxford\'s study of 5,400+ IT projects (45% average overrun). Prepared with the Visdum Build vs Buy Memo Generator: visdum.com/blog/build-vs-buy-commission-software</p>';
+    }
+
+    function memoText(m){
+      var tmp = document.createElement('div'); tmp.innerHTML = memoHTML(m);
+      var lines = [];
+      Array.prototype.forEach.call(tmp.querySelectorAll('.m-meta span'), function(s, idx, all){ if (idx % 2 === 0) lines.push(s.textContent.toUpperCase() + ': ' + all[idx+1].textContent); });
+      lines.push('');
+      Array.prototype.forEach.call(tmp.children, function(el){
+        if (el.classList.contains('m-hd')) return;
+        if (el.tagName === 'H5') { lines.push(''); lines.push(el.textContent.toUpperCase()); }
+        else if (el.tagName === 'UL') { Array.prototype.forEach.call(el.children, function(li){ lines.push('- ' + li.textContent); }); }
+        else if (el.classList.contains('vmg-tw')) { Array.prototype.forEach.call(el.querySelectorAll('tr'), function(tr){ lines.push(Array.prototype.map.call(tr.children, function(c){ return c.textContent; }).join(' | ')); }); }
+        else lines.push(el.textContent);
+      });
+      return lines.join('\n');
+    }
+
+    // inputs
+    Array.prototype.forEach.call(root.querySelectorAll('.vmg-inputs input, .vmg-inputs select'), function(el){
+      el.addEventListener('input', render); el.addEventListener('change', render);
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('.vmg-seg'), function(g){
+      g.addEventListener('click', function(e){
+        var b = e.target.closest('button'); if (!b) return;
+        Array.prototype.forEach.call(g.querySelectorAll('button'), function(x){ x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+        render();
+      });
+    });
+    root.querySelector('.vmg-inputs').addEventListener('submit', function(e){ e.preventDefault(); });
+
+    // gate
+    var FREE = /@(gmail|yahoo|hotmail|outlook|live|aol|icloud|proton|protonmail|gmx|yandex|mail)\./i;
+    out('gate').addEventListener('submit', function(e){
+      e.preventDefault();
+      var g = {}; Array.prototype.forEach.call(root.querySelectorAll('[data-g]'), function(el){ g[el.getAttribute('data-g')] = el.value.trim(); });
+      var err = out('err');
+      if (!g.name) { err.textContent = 'Add your name so the memo has a sender.'; return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(g.email)) { err.textContent = 'Enter a valid email address.'; return; }
+      if (FREE.test(g.email)) { err.textContent = 'Use your work email so we can send the memo to the right inbox.'; return; }
+      if (!g.company) { err.textContent = 'Add your company name for the memo header.'; return; }
+      err.textContent = '';
+      var m = model();
+      var payload = { name:g.name, title:g.title, email:g.email, company:g.company, inputs:m.i, score:m.score, band:m.band, buildTotal:Math.round(m.bt), buyTotal:Math.round(m.vt) };
+      function unlock(){
+        lead = g;
+        out('memo').innerHTML = memoHTML(model());
+        out('memoWrap').hidden = false;
+        out('gate').hidden = true;
+        out('memoWrap').scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block:'start' });
+      }
+      try { root.dispatchEvent(new CustomEvent('visdum:memo-lead', { detail: payload, bubbles: true })); } catch(x) {}
+      var r; try { r = (typeof window.VisdumMemoGate === 'function') ? window.VisdumMemoGate(payload) : null; } catch(x) { r = null; }
+      if (r && typeof r.then === 'function') { r.then(unlock, unlock); } else { unlock(); }
+    });
+
+    // actions
+    function toast(t){ var el = out('toast'); el.textContent = t; setTimeout(function(){ if (el.textContent === t) el.textContent = ''; }, 2600); }
+    root.querySelector('[data-a="copy"]').addEventListener('click', function(){
+      var text = memoText(model());
+      function fallback(){
+        var range = document.createRange(); range.selectNodeContents(out('memo'));
+        var s = window.getSelection(); s.removeAllRanges(); s.addRange(range);
+        toast('Memo selected. Press Ctrl+C or Cmd+C to copy.');
+      }
+      try { navigator.clipboard.writeText(text).then(function(){ toast('Memo copied. Paste it into an email or doc.'); }, fallback); } catch(x) { fallback(); }
+    });
+    root.querySelector('[data-a="pdf"]').addEventListener('click', function(){
+      var css = Array.prototype.map.call(root.parentNode.querySelectorAll('style'), function(s){ return s.textContent; }).join('\n');
+      var w = window.open('', '_blank');
+      if (!w) { toast('Allow pop-ups to save as PDF, or use Copy memo.'); return; }
+      w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Build vs buy memo</title><style>' + css +
+        ' .vmg-stage{background:#fff;border:0;padding:0;max-width:760px} .vmg-stage .vmg-memo{box-shadow:none;border:0}</style></head><body style="margin:32px">' +
+        '<div class="vmg-stage"><article class="vmg-memo">' + out('memo').innerHTML + '</article></div></body></html>');
+      w.document.close(); w.focus(); setTimeout(function(){ w.print(); }, 400);
+    });
+    root.querySelector('[data-a="edit"]').addEventListener('click', function(){
+      root.querySelector('.vmg-inputs').scrollIntoView({ behavior:'smooth', block:'start' });
+    });
+
+    render();
+  });
+})();
+</script>
