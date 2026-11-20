@@ -1,0 +1,525 @@
+<!-- ===================================================================
+     EMBED FRAGMENT: Visdum "Memo to your CFO" generator, v2
+     Paste as-is into the blog. No doctype/html/head/body. Fonts come from the host.
+     Tokens are scoped to .vm2-stage. JS is an IIFE that boots over .vm2-stage.
+
+     FLOW (value first): inputs -> the full memo shows immediately (editable) ->
+     one work-email field unlocks Copy, PDF, Word and Google Docs exports.
+
+     LEAD CAPTURE HOOK (marketing ops):
+       On email submit the script
+       1) calls window.VisdumMemoGate(payload) if it exists (may return a Promise), and
+       2) dispatches a "visdum:memo-lead" CustomEvent on the .vm2-stage element (bubbles).
+       payload = { email, benchmarkUpdates, inputs:{...}, score, band,
+                   continueTotal, buildTotal, buyTotal }
+       Also fires "visdum:memo-export" { format } and "visdum:memo-review" on CTA click.
+       Nothing is sent anywhere by default.
+
+     ATTRIBUTES on .vm2-stage:
+       data-exports="on"   PDF / Word / Google Docs act (live site). "off" = preview sandbox.
+       data-blog-url       methodology link printed in every memo.
+       data-review-url     link for the 30-minute assumptions review CTA.
+     =================================================================== -->
+<style>
+.vm2-stage{
+  --ink:#1A1A22; --ink-soft:#444A57; --ink-muted:#686D7A; --navy:#20406C;
+  --accent:#4856DE; --accent-2:#6E7CF0; --accent-3:#9E92EE;
+  --accent-wash:#EEF0FD; --line:#E2DDEF; --line-soft:#ECE8F6; --field:#F7F5FC;
+  --flag:#A9503C; --flag-wash:#FBEFEA; --ok:#2F6B4A; --ok-wash:#EAF4EE; --warn:#8A6417; --warn-wash:#FBF3E2;
+  --font-display:'Playfair Display',Georgia,serif;
+  --font-body:'Hanken Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;
+  font-family:var(--font-body); color:var(--ink); line-height:1.5;
+  width:100%; max-width:836px; margin:0 auto;
+  background:#f4f2fe;
+  background-image:radial-gradient(circle,rgba(72,86,222,.10) 1.4px,rgba(72,86,222,0) 1.6px);
+  background-size:24px 24px;
+  border:1px solid var(--line); border-radius:20px; padding:30px 22px 24px;
+}
+.vm2-stage, .vm2-stage *{box-sizing:border-box}
+.vm2-stage [hidden]{display:none!important}
+.vm2-stage .vm2-eyebrow{text-align:center;font-size:11.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 8px}
+.vm2-stage .vm2-h{text-align:center;font-family:var(--font-display);font-size:28px;line-height:1.2;font-weight:700;margin:0 0 6px;text-wrap:balance}
+.vm2-stage .vm2-h em{font-style:italic;color:var(--accent)}
+.vm2-stage .vm2-dek{text-align:center;font-size:14.5px;color:var(--ink-soft);margin:0 auto 20px;max-width:580px}
+
+/* steps header */
+.vm2-stage .vm2-stephead{display:flex;align-items:center;gap:10px;margin:0 0 10px}
+.vm2-stage .vm2-sn{flex:none;width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;font-weight:800;font-size:13px;font-variant-numeric:tabular-nums}
+.vm2-stage .vm2-st{font-size:15px;font-weight:800;margin:0}
+.vm2-stage .vm2-ss{font-size:12.5px;color:var(--ink-muted);margin:0}
+
+/* inputs */
+.vm2-stage .vm2-panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;min-width:0}
+.vm2-stage .vm2-sub{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-muted);margin:16px 0 10px}
+.vm2-stage .vm2-sub:first-child{margin-top:0}
+.vm2-stage .vm2-row{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px}
+.vm2-stage .vm2-f{flex:1 1 150px;display:flex;flex-direction:column;gap:5px;min-width:0}
+.vm2-stage .vm2-f.wide{flex:1 1 100%}
+.vm2-stage .vm2-f label{font-size:12.5px;font-weight:700;color:var(--ink-soft)}
+.vm2-stage .vm2-f input,.vm2-stage .vm2-f select{font:inherit;font-size:14px;color:var(--ink);background:var(--field);border:1px solid var(--line);border-radius:10px;padding:9px 11px;width:100%;font-variant-numeric:tabular-nums}
+.vm2-stage .vm2-hours{background:var(--accent-wash);border:1px solid rgba(72,86,222,.25);border-radius:12px;padding:12px 14px}
+.vm2-stage .vm2-hours label{color:#2E3AAE;font-size:13.5px}
+.vm2-stage .vm2-hours input{background:#fff;max-width:220px}
+.vm2-stage .vm2-hint{font-size:11.5px;color:var(--ink-muted);margin:0;line-height:1.4}
+.vm2-stage .vm2-yns{display:flex;flex-wrap:wrap;column-gap:20px}
+.vm2-stage .vm2-yn{flex:1 1 320px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid var(--line-soft);min-width:0}
+.vm2-stage .vm2-q{font-size:13.5px;font-weight:600;color:var(--ink)}
+.vm2-stage .vm2-seg{display:inline-flex;flex:none;background:var(--field);border:1px solid var(--line);border-radius:999px;padding:3px}
+.vm2-stage .vm2-seg button{font:inherit;font-size:12.5px;font-weight:700;border:0;background:transparent;color:var(--ink-muted);padding:5px 12px;border-radius:999px;cursor:pointer}
+.vm2-stage .vm2-seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.vm2-stage details.vm2-adv{margin-top:12px;border-top:1px solid var(--line-soft);padding-top:10px}
+.vm2-stage details.vm2-adv summary{cursor:pointer;font-size:12.5px;font-weight:700;color:var(--accent)}
+.vm2-stage details.vm2-adv .vm2-row{margin-top:10px}
+.vm2-stage .vm2-f input:focus,.vm2-stage .vm2-f select:focus,.vm2-stage .vm2-seg button:focus-visible,.vm2-stage .vm2-btn:focus-visible,.vm2-stage .vm2-memo:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* memo section */
+.vm2-stage .vm2-sec{margin-top:18px}
+.vm2-stage .vm2-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px}
+.vm2-stage .vm2-btn{font:inherit;font-size:13.5px;font-weight:800;border:0;border-radius:10px;padding:10px 15px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;text-decoration:none;line-height:1.2}
+.vm2-stage .vm2-btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff}
+.vm2-stage .vm2-btn.ghost{background:#fff;color:var(--accent);border:1px solid var(--line)}
+.vm2-stage .vm2-btn.locked{opacity:.55}
+.vm2-stage .vm2-btn .vm2-lk{font-size:11px}
+.vm2-stage .vm2-toast{font-size:12.5px;font-weight:700;color:var(--ok)}
+.vm2-stage .vm2-editnote{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;background:var(--warn-wash);color:var(--warn);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:700;margin-bottom:10px}
+.vm2-stage .vm2-editnote button{font:inherit;font-size:12.5px;font-weight:800;color:var(--warn);background:#fff;border:1px solid rgba(138,100,23,.3);border-radius:8px;padding:5px 10px;cursor:pointer}
+.vm2-stage .vm2-tip{font-size:12px;color:var(--ink-muted);margin:0 0 8px}
+
+/* memo document */
+.vm2-stage .vm2-memo{background:#fff;border:1px solid var(--line);border-radius:6px;padding:28px 26px;box-shadow:0 18px 40px -26px rgba(32,64,108,.35);font-size:14px;color:var(--ink)}
+.vm2-stage .vm2-memo .m-brand{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px;font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-muted)}
+.vm2-stage .vm2-memo .m-brand b{color:var(--accent);letter-spacing:.04em;font-size:15px;text-transform:none}
+.vm2-stage .vm2-memo .m-hd{border-bottom:2px solid var(--ink);padding-bottom:12px;margin-bottom:6px}
+.vm2-stage .vm2-memo .m-meta{display:grid;grid-template-columns:64px 1fr;gap:4px 10px;font-size:13.5px}
+.vm2-stage .vm2-memo .m-meta .m-k{font-weight:800;color:var(--ink-muted);font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding-top:3px}
+.vm2-stage .vm2-memo .m-ph{background:var(--warn-wash);color:var(--warn);border-radius:4px;padding:0 4px}
+.vm2-stage .vm2-memo h4{font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin:20px 0 6px}
+.vm2-stage .vm2-memo .m-p{margin:0 0 8px;max-width:68ch}
+.vm2-stage .vm2-memo ul.m-ul{margin:0 0 8px;padding-left:18px}
+.vm2-stage .vm2-memo ul.m-ul li{margin:0 0 5px}
+.vm2-stage .vm2-memo .m-qa{margin:0 0 10px}
+.vm2-stage .vm2-memo .m-qa b{display:block;margin-bottom:2px}
+.vm2-stage .vm2-tw{overflow-x:auto}
+.vm2-stage table.vm2-t{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums;margin:2px 0 8px}
+.vm2-stage table.vm2-t th,.vm2-stage table.vm2-t td{padding:6px 6px;text-align:right;border-bottom:1px solid var(--line-soft);vertical-align:top}
+.vm2-stage table.vm2-t th:first-child,.vm2-stage table.vm2-t td:first-child{text-align:left}
+.vm2-stage table.vm2-t th{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-muted);font-weight:800}
+.vm2-stage table.vm2-t tr.tot td{font-weight:800;border-bottom:0;border-top:2px solid var(--ink)}
+.vm2-stage table.vm2-t td.l{text-align:left}
+.vm2-stage table.vm2-t td.buy{color:#2E3AAE;font-weight:700}
+.vm2-stage table.vm2-t td.bld{color:var(--ok);font-weight:700}
+.vm2-stage table.vm2-t td.mid{color:var(--ink-muted)}
+/* score scale inside memo */
+.vm2-stage .m-scale{margin:6px 0 4px}
+.vm2-stage .m-track{position:relative;display:flex;height:10px;border-radius:999px;overflow:hidden}
+.vm2-stage .m-track i{display:block;height:100%}
+.vm2-stage .m-pinrow{position:relative;height:16px}
+.vm2-stage .m-pin{position:absolute;top:0;width:0;height:0;border:6px solid transparent;border-bottom-color:var(--navy);transform:translateX(-6px)}
+.vm2-stage .m-bands{display:flex;font-size:11px;font-weight:700;color:var(--ink-muted);font-variant-numeric:tabular-nums}
+.vm2-stage .m-bands span{flex:1;text-align:center}
+.vm2-stage .m-bands span.on{color:var(--ink)}
+.vm2-stage .vm2-memo .m-foot{margin-top:20px;padding-top:10px;border-top:1px solid var(--line-soft);font-size:11.5px;color:var(--ink-muted)}
+.vm2-stage .vm2-memo .m-foot a{color:var(--accent)}
+
+/* gate */
+.vm2-stage .vm2-gate{margin-top:14px;background:var(--navy);color:#fff;border-radius:16px;padding:18px}
+.vm2-stage .vm2-gate .vm2-gt{font-family:var(--font-display);font-size:21px;margin:0 0 4px;font-weight:700}
+.vm2-stage .vm2-gate .vm2-gd{margin:0 0 12px;font-size:13.5px;color:#C9D3EC}
+.vm2-stage .vm2-gform{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.vm2-stage .vm2-gform .vm2-f{flex:1 1 260px}
+.vm2-stage .vm2-gform .vm2-f label{color:#DCE3F5}
+.vm2-stage .vm2-gform .vm2-f input{background:#fff;border-color:#fff}
+.vm2-stage .vm2-check{display:flex;gap:8px;align-items:flex-start;margin:12px 0 0;font-size:12.5px;color:#DCE3F5}
+.vm2-stage .vm2-check input{margin-top:3px}
+.vm2-stage .vm2-err{color:#FFC9B8;font-size:12.5px;font-weight:700;min-height:1em;margin:6px 0 0}
+.vm2-stage .vm2-fine{font-size:11.5px;color:#AEB9D6;margin:8px 0 0}
+.vm2-stage .vm2-done{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:700}
+.vm2-stage .vm2-done .vm2-tick{flex:none;width:24px;height:24px;border-radius:50%;background:#fff;color:var(--navy);display:grid;place-items:center;font-weight:800}
+
+/* review CTA */
+.vm2-stage .vm2-review{margin-top:14px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px 18px}
+.vm2-stage .vm2-review .vm2-rt{font-size:15px;font-weight:800;margin:0 0 3px}
+.vm2-stage .vm2-review .vm2-rd{font-size:13px;color:var(--ink-soft);margin:0;max-width:52ch}
+
+@media (max-width:600px){
+  .vm2-stage{padding:22px 12px 18px}
+  .vm2-stage .vm2-h{font-size:22px}
+  .vm2-stage .vm2-memo{padding:18px 14px}
+  .vm2-stage .vm2-hours input{max-width:none}
+}
+</style>
+
+<div class="vm2-stage" id="cfo-memo" data-exports="on" data-blog-url="https://www.visdum.com/blog/build-vs-buy-commission-software" data-review-url="https://www.visdum.com/free-trial">
+  <p class="vm2-eyebrow">Build vs buy commission software</p>
+  <p class="vm2-h">Write the <em>memo to your CFO</em> in two minutes</p>
+  <p class="vm2-dek">Enter how you run commissions today. Your memo builds below as you type, with a 3-way cost comparison, an explained score, and answers to the questions your CFO will ask.</p>
+
+  <!-- STEP 1: inputs -->
+  <div class="vm2-stephead"><span class="vm2-sn">1</span><div><p class="vm2-st">Tell us about your commission setup</p><p class="vm2-ss">Defaults show a 90-payee SaaS team. Change any number.</p></div></div>
+  <form class="vm2-panel vm2-inputs" novalidate>
+    <p class="vm2-sub">How you run commissions today</p>
+    <div class="vm2-f wide vm2-hours">
+      <label for="vm2-hours">How many hours per month does your team spend on commissions, across everyone involved?</label>
+      <input id="vm2-hours" data-k="hours" type="number" min="0" max="2000" value="100" inputmode="numeric">
+      <p class="vm2-hint">Count RevOps, finance and payroll time: data pulls, calculations, statements, disputes and corrections.</p>
+    </div>
+
+    <p class="vm2-sub">Your team and plans</p>
+    <div class="vm2-row">
+      <div class="vm2-f"><label for="vm2-payees">Commissioned payees</label><input id="vm2-payees" data-k="payees" type="number" min="5" max="5000" value="90" inputmode="numeric"></div>
+      <div class="vm2-f"><label for="vm2-plans">Comp plans</label><input id="vm2-plans" data-k="plans" type="number" min="1" max="50" value="3" inputmode="numeric"></div>
+      <div class="vm2-f"><label for="vm2-changes">Plan changes per year</label><input id="vm2-changes" data-k="changes" type="number" min="0" max="24" value="3" inputmode="numeric"></div>
+    </div>
+    <div class="vm2-row">
+      <div class="vm2-f"><label for="vm2-crm">CRM</label><select id="vm2-crm" data-k="crm"><option>HubSpot</option><option>Salesforce</option><option>Other CRM</option></select></div>
+      <div class="vm2-f"><label for="vm2-erp">ERP or accounting</label><select id="vm2-erp" data-k="erp"><option>NetSuite</option><option>QuickBooks</option><option>Sage Intacct</option><option>Other ERP</option></select></div>
+    </div>
+
+    <p class="vm2-sub">Six quick questions</p>
+    <div class="vm2-yns">
+      <div class="vm2-yn"><span class="vm2-q">Are your financials audited (or are you pre-IPO)?</span><span class="vm2-seg" data-k="audited"><button type="button" data-v="1" aria-pressed="true">Yes</button><button type="button" data-v="0" aria-pressed="false">No</button></span></div>
+      <div class="vm2-yn"><span class="vm2-q">Do you capitalize commissions under ASC 340-40?</span><span class="vm2-seg" data-k="asc"><button type="button" data-v="1" aria-pressed="true">Yes</button><button type="button" data-v="0" aria-pressed="false">No</button></span></div>
+      <div class="vm2-yn"><span class="vm2-q">Do reps need self-serve statements and dashboards?</span><span class="vm2-seg" data-k="reps"><button type="button" data-v="1" aria-pressed="true">Yes</button><button type="button" data-v="0" aria-pressed="false">No</button></span></div>
+      <div class="vm2-yn"><span class="vm2-q">Can you name an engineering owner for the next 3 years?</span><span class="vm2-seg" data-k="owner"><button type="button" data-v="1" aria-pressed="false">Yes</button><button type="button" data-v="0" aria-pressed="true">No</button></span></div>
+      <div class="vm2-yn"><span class="vm2-q">Is commission logic part of your product?</span><span class="vm2-seg" data-k="product"><button type="button" data-v="1" aria-pressed="false">Yes</button><button type="button" data-v="0" aria-pressed="true">No</button></span></div>
+      <div class="vm2-yn"><span class="vm2-q">Do you need this live within a quarter?</span><span class="vm2-seg" data-k="urgent"><button type="button" data-v="1" aria-pressed="true">Yes</button><button type="button" data-v="0" aria-pressed="false">No</button></span></div>
+    </div>
+
+    <details class="vm2-adv">
+      <summary>Adjust cost assumptions</summary>
+      <div class="vm2-row">
+        <div class="vm2-f"><label for="vm2-fte">Fully loaded cost per FTE ($)</label><input id="vm2-fte" data-k="fte" type="number" min="50000" max="500000" step="1000" value="172000" inputmode="numeric"></div>
+        <div class="vm2-f"><label for="vm2-price">Software price per payee per month ($)</label><input id="vm2-price" data-k="price" type="number" min="5" max="300" value="50" inputmode="numeric"></div>
+      </div>
+      <div class="vm2-yn" style="flex-basis:100%"><span class="vm2-q">Include a downside case (build runs 45% over)?</span><span class="vm2-seg" data-k="downside"><button type="button" data-v="1" aria-pressed="false">Yes</button><button type="button" data-v="0" aria-pressed="true">No</button></span></div>
+      <p class="vm2-hint">Defaults: $172K per FTE (BLS median data scientist pay, divided by wages' 70% share of total compensation), which is about $83 an hour over 2,080 working hours. $50 per payee per month is the midpoint of CFO Shortlist's $25 to $75 range.</p>
+    </details>
+  </form>
+
+  <!-- STEP 2: memo preview -->
+  <div class="vm2-sec">
+    <div class="vm2-stephead"><span class="vm2-sn">2</span><div><p class="vm2-st">Review and edit your memo</p><p class="vm2-ss">Click any text in the memo to change it. Highlighted fields are yours to fill in.</p></div></div>
+    <div class="vm2-editnote" data-o="editnote" hidden><span>You edited the memo. Changing your numbers now will replace your edits.</span><button type="button" data-a="refresh">Update memo with new numbers</button></div>
+    <article class="vm2-memo" data-o="memo" contenteditable="true" spellcheck="true" aria-label="Your memo to the CFO (editable)"></article>
+  </div>
+
+  <!-- STEP 3: email + exports -->
+  <div class="vm2-sec">
+    <div class="vm2-stephead"><span class="vm2-sn">3</span><div><p class="vm2-st">Take it to your CFO</p><p class="vm2-ss">Copy it, or export it in the format your CFO files.</p></div></div>
+    <div class="vm2-bar">
+      <button class="vm2-btn primary" type="button" data-x="copy"><span class="vm2-lk" data-lock>&#128274;</span>Copy memo</button>
+      <button class="vm2-btn ghost" type="button" data-x="pdf"><span class="vm2-lk" data-lock>&#128274;</span>Download PDF</button>
+      <button class="vm2-btn ghost" type="button" data-x="word"><span class="vm2-lk" data-lock>&#128274;</span>Download Word</button>
+      <button class="vm2-btn ghost" type="button" data-x="gdocs"><span class="vm2-lk" data-lock>&#128274;</span>Open in Google Docs</button>
+      <span class="vm2-toast" data-o="toast" role="status"></span>
+    </div>
+
+    <form class="vm2-gate" novalidate data-o="gate">
+      <p class="vm2-gt">Get your memo to the CFO</p>
+      <p class="vm2-gd">Enter your work email to unlock copy and export. We will also email you a copy of the memo.</p>
+      <div class="vm2-gform">
+        <div class="vm2-f"><label for="vm2-email">Work email</label><input id="vm2-email" data-g="email" type="email" autocomplete="email" required placeholder="you@company.com"></div>
+        <button class="vm2-btn primary" type="submit">Unlock my memo</button>
+      </div>
+      <label class="vm2-check"><input type="checkbox" data-g="bench" checked> Notify me when Visdum publishes updated benchmarks. We refresh the cost assumptions every year.</label>
+      <p class="vm2-err" data-o="err"></p>
+      <p class="vm2-fine" data-o="fine">No spam. Visdum may follow up about your evaluation.</p>
+    </form>
+    <div class="vm2-gate" data-o="gateDone" hidden><div class="vm2-done"><span class="vm2-tick">&#10003;</span><span>Unlocked. Copy or export your memo above. A copy is on its way to <span data-o="emailShown"></span>.</span></div></div>
+
+    <div class="vm2-review">
+      <div><p class="vm2-rt">Want a second pair of eyes before it goes to your CFO?</p><p class="vm2-rd">Schedule a 30-minute review of your assumptions with a Visdum compensation expert. We will walk through your plan complexity and pricing.</p></div>
+      <a class="vm2-btn primary" data-o="review" href="https://www.visdum.com/free-trial" target="_blank" rel="noopener">Schedule a 30-minute review</a>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  Array.prototype.forEach.call(document.querySelectorAll('.vm2-stage'), function(root){
+    if (root.getAttribute('data-vm2-booted')) return;
+    root.setAttribute('data-vm2-booted','1');
+    var out = function(k){ return root.querySelector('[data-o="'+k+'"]'); };
+    var BLOG = root.getAttribute('data-blog-url') || 'https://www.visdum.com/blog/build-vs-buy-commission-software';
+    var REVIEW = root.getAttribute('data-review-url') || 'https://www.visdum.com/free-trial';
+    var EXPORTS = root.getAttribute('data-exports') !== 'off';
+    out('review').setAttribute('href', REVIEW);
+    var unlocked = false, edited = false, email = '';
+
+    function num(k, d){ var el = root.querySelector('[data-k="'+k+'"]'); var v = parseFloat(el && el.value); return isFinite(v) ? v : d; }
+    function seg(k){ var b = root.querySelector('[data-k="'+k+'"] [aria-pressed="true"]'); return b ? b.getAttribute('data-v') === '1' : false; }
+    function sel(k){ var el = root.querySelector('[data-k="'+k+'"]'); return el ? el.value : ''; }
+    function clamp(v,a,b){ return Math.min(b, Math.max(a, v)); }
+    function k$(n){ return '$' + (Math.abs(n) >= 1e6 ? (n/1e6).toFixed(2) + 'M' : Math.round(n/1000) + 'K'); }
+    function f$(n){ return '$' + Math.round(n).toLocaleString('en-US'); }
+    function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+    function pl(n, w){ return n + ' ' + w + (n === 1 ? '' : 's'); }
+
+    var BANDS = [
+      { k:'sbuy',  min:8,  max:15, t:'Strong buy signal' },
+      { k:'lbuy',  min:16, max:23, t:'Lean buy' },
+      { k:'lbld',  min:24, max:31, t:'Lean build' },
+      { k:'sbld',  min:32, max:40, t:'Strong build signal' }
+    ];
+
+    function model(){
+      var i = {
+        hours: clamp(Math.round(num('hours',100)),0,2000),
+        payees: clamp(Math.round(num('payees',90)),5,5000), plans: clamp(Math.round(num('plans',3)),1,50),
+        changes: clamp(Math.round(num('changes',3)),0,24), crm: sel('crm'), erp: sel('erp'),
+        audited: seg('audited'), asc: seg('asc'), reps: seg('reps'), owner: seg('owner'),
+        product: seg('product'), urgent: seg('urgent'), downside: seg('downside'),
+        fte: clamp(num('fte',172000),50000,500000), price: clamp(num('price',50),5,300)
+      };
+      var rate = i.fte / 2080;
+      // continue in spreadsheets: hours x rate x 12, flat each year
+      var contYr = i.hours * rate * 12;
+      var c = [contYr, contYr, contYr];
+      // build
+      var over = i.downside ? 1.45 : 1;
+      var init = 0.25 * (1 + 0.08 * Math.max(0, i.plans - 3));
+      var upkeep = 0.15 + 0.05 * i.changes + (0.1/90) * i.payees;
+      var adminB = 0.05 + (0.2/90) * i.payees;
+      var audit = i.asc ? 0.05 : (i.audited ? 0.03 : 0.02);
+      var runB = (upkeep + adminB + audit) * i.fte;
+      var b = [ (init * i.fte + runB) * over, runB * over, runB * over ];
+      // buy
+      var impl = clamp(10000 + 150 * i.payees, 10000, 30000);
+      var sub = i.payees * i.price * 12;
+      var adminV = (0.05 + (0.05/90) * i.payees) * i.fte;
+      var v = [ impl + sub + adminV, sub + adminV, sub + adminV ];
+
+      var s = [
+        { c:'Commission logic is a product differentiator', a: i.product ? 'Yes, it is part of our product' : 'No, standard SaaS plans', v: i.product ? 5 : 1 },
+        { c:'Plan changes per year', a: pl(i.changes,'change') + ' a year', v: i.changes >= 3 ? 1 : i.changes === 2 ? 2 : i.changes === 1 ? 3 : 5 },
+        { c:'Payee count', a: i.payees + ' payees', v: i.payees < 25 ? 5 : i.payees < 40 ? 3 : i.payees < 100 ? 2 : 1 },
+        { c:'Engineering owner for 3+ years', a: i.owner ? 'Yes, we can name one' : 'No named owner', v: i.owner ? 4 : 1 },
+        { c:'Audit and SOX exposure', a: i.audited ? 'Audited or pre-IPO' : 'Unaudited', v: i.audited ? 1 : 4 },
+        { c:'ASC 340-40 capitalization', a: i.asc ? 'Required' : 'Not required', v: i.asc ? 1 : 4 },
+        { c:'Rep transparency need', a: i.reps ? 'Reps need statements and dashboards' : 'Low', v: i.reps ? 1 : 4 },
+        { c:'Time-to-value urgency', a: i.urgent ? 'Needed within a quarter' : 'No deadline', v: i.urgent ? 1 : 4 }
+      ];
+      var score = s.reduce(function(a,x){ return a + x.v; }, 0);
+      var band = BANDS.filter(function(x){ return score >= x.min && score <= x.max; })[0] || BANDS[0];
+      var sum = function(a){ return a[0]+a[1]+a[2]; };
+      return { i:i, rate:rate, c:c, b:b, v:v, ct:sum(c), bt:sum(b), vt:sum(v), s:s, score:score, band:band,
+               parts:{ contYr:contYr, init:init*i.fte*over, upkeep:upkeep*i.fte*over, adminB:adminB*i.fte*over, audit:audit*i.fte*over, impl:impl, sub:sub, adminV:adminV } };
+    }
+
+    function dir(v){ return v <= 2 ? 'toward buying' : v === 3 ? 'neutral' : 'toward building'; }
+    function dirCls(v){ return v <= 2 ? 'buy' : v === 3 ? 'mid' : 'bld'; }
+
+    function recommendation(m){
+      var buySide = m.band.k === 'sbuy' || m.band.k === 'lbuy';
+      var r = {};
+      if (buySide) {
+        r.head = 'I recommend we stop running commissions manually and buy commission software, rather than continue as we are or build our own engine.';
+        if (m.ct >= m.vt) r.cost = 'Continuing as we are costs an estimated ' + f$(m.ct) + ' over three years in team time alone, against ' + f$(m.vt) + ' to buy, a saving of ' + f$(m.ct - m.vt) + '. Building our own engine would cost about ' + f$(m.bt) + '.';
+        else r.cost = 'On direct cost, continuing as we are is cheaper: about ' + f$(m.ct) + ' over three years against ' + f$(m.vt) + ' to buy. The case for buying rests on accuracy, an audit trail and capacity as we grow, which the team-time figure does not capture. Building our own engine would cost about ' + f$(m.bt) + '.';
+      } else if (m.band.k === 'lbld') {
+        r.head = 'Our situation leans toward building, but not clearly. I recommend we only build if we can fund a dedicated engineering owner for three years, and that we benchmark one commission platform before committing.';
+        r.cost = 'Over three years, continuing costs about ' + f$(m.ct) + ', building about ' + f$(m.bt) + ', and buying about ' + f$(m.vt) + '.';
+      } else {
+        r.head = 'Building our own commission engine is defensible for us, provided we fund a dedicated engineering owner for at least three years.';
+        r.cost = 'Over three years, continuing costs about ' + f$(m.ct) + ', building about ' + f$(m.bt) + ', and buying about ' + f$(m.vt) + '.';
+      }
+      return r;
+    }
+
+    function memoHTML(m){
+      var i = m.i;
+      var d = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+      var R = recommendation(m);
+      var row = function(label, a, cls){ return '<tr><td class="l">'+label+'</td><td>'+f$(a[0])+'</td><td>'+f$(a[1])+'</td><td>'+f$(a[2])+'</td><td><b>'+f$(a[0]+a[1]+a[2])+'</b></td></tr>'; };
+      var pinLeft = ((m.score - 8) / 32 * 100).toFixed(1);
+      var sorted = m.s.slice().sort(function(a,b){ return a.v - b.v; });
+      var buyDrivers = m.s.filter(function(x){ return x.v <= 2; });
+      var bldDrivers = m.s.filter(function(x){ return x.v >= 4; });
+      var drivers = (buyDrivers.length ? buyDrivers : sorted).slice(0,3).map(function(x){
+        return '<li>"' + esc(x.a) + '" scored ' + x.v + ' of 5, ' + dir(x.v) + ' (' + esc(x.c.toLowerCase()) + ').</li>';
+      }).join('');
+      if (bldDrivers.length && buyDrivers.length) drivers += '<li>Pulling the other way: ' + bldDrivers.map(function(x){ return '"' + esc(x.a) + '"'; }).join(', ') + '.</li>';
+      var sc = m.s.map(function(x){ return '<tr><td class="l">'+esc(x.c)+'</td><td class="l">'+esc(x.a)+'</td><td>'+x.v+'</td><td class="l '+dirCls(x.v)+'">'+dir(x.v)+'</td></tr>'; }).join('');
+      var qtrCost = i.hours * 3 * m.rate;
+      var mech = [];
+      if (i.changes > 0) mech.push('retroactive plan changes');
+      mech.push('clawbacks and adjustments');
+      if (i.asc) mech.push('ASC 340-40 amortization');
+      if (i.reps) mech.push('rep-facing statements');
+
+      return '' +
+      '<div class="m-brand"><span>Decision memo</span><b>Visdum</b></div>' +
+      '<div class="m-hd"><div class="m-meta">' +
+        '<span class="m-k">To</span><span>Chief Financial Officer, <span class="m-ph">[Company name]</span></span>' +
+        '<span class="m-k">From</span><span><span class="m-ph">[Your name, title]</span></span>' +
+        '<span class="m-k">Date</span><span>' + d + '</span>' +
+        '<span class="m-k">Re</span><span>How we calculate and pay sales commissions: continue, build or buy</span>' +
+      '</div></div>' +
+
+      '<h4>Recommendation</h4><p class="m-p">' + R.head + ' ' + R.cost + '</p>' +
+
+      '<h4>Where we are today</h4><p class="m-p">We pay ' + i.payees + ' commissioned payees on ' + pl(i.plans,'plan') + ', with about ' + pl(i.changes,'plan change') + ' a year and data in ' + esc(i.crm) + ' and ' + esc(i.erp) + '. The team spends about ' + i.hours + ' hours a month on commissions, roughly ' + f$(m.parts.contYr) + ' a year in fully loaded team time.' + (i.asc ? ' We capitalize commissions under ASC 340-40.' : '') + '</p>' +
+
+      '<h4>Three-year cost comparison</h4><div class="vm2-tw"><table class="vm2-t"><thead><tr><th>Option</th><th>Year 1</th><th>Year 2</th><th>Year 3</th><th>3-year total</th></tr></thead><tbody>' +
+        row('Continue as we are', m.c) + row('Build in-house', m.b) + row('Buy commission software', m.v) +
+      '</tbody></table></div>' +
+      '<p class="m-p">Continue: ' + i.hours + ' hours a month at about $' + Math.round(m.rate) + ' an hour. Build: initial build ' + f$(m.parts.init) + ', then engineering upkeep, reconciliation and audit prep of ' + f$(m.parts.upkeep + m.parts.adminB + m.parts.audit) + ' a year' + (i.downside ? ', with a 45% overrun applied' : '') + '. Buy: implementation ' + f$(m.parts.impl) + ' once, subscription ' + f$(m.parts.sub) + ' a year and internal admin ' + f$(m.parts.adminV) + ' a year. The continue figure counts team time only. It does not include the cost of payout errors.</p>' +
+
+      '<h4>Build vs buy score: ' + m.score + ' of 40, ' + m.band.t.toLowerCase() + '</h4>' +
+      '<div class="m-scale"><div class="m-track"><i style="width:25%;background:#4856DE"></i><i style="width:25%;background:#9E92EE"></i><i style="width:25%;background:#C99A3E"></i><i style="width:25%;background:#4C8A66"></i></div>' +
+        '<div class="m-pinrow"><span class="m-pin" style="left:' + pinLeft + '%"></span></div>' +
+        '<div class="m-bands">' + BANDS.map(function(b){ return '<span class="' + (b.k === m.band.k ? 'on' : '') + '">' + b.min + ' to ' + b.max + ': ' + b.t + '</span>'; }).join('') + '</div></div>' +
+      '<p class="m-p">Each of eight criteria is scored from 1 (favors buying) to 5 (favors building), so totals run from 8 to 40. What drove our score:</p><ul class="m-ul">' + drivers + '</ul>' +
+      '<div class="vm2-tw"><table class="vm2-t"><thead><tr><th>Criterion</th><th>Our answer</th><th>Score</th><th>Points</th></tr></thead><tbody>' + sc +
+        '<tr class="tot"><td class="l">Total</td><td></td><td>' + m.score + ' / 40</td><td class="l">' + m.band.t + '</td></tr></tbody></table></div>' +
+      '<p class="m-p">This scoring uses the 8-criterion framework from Visdum\'s Build vs Buy guide.</p>' +
+
+      '<h4>Questions you may ask, and my answers</h4>' +
+      '<div class="m-qa"><b>Can our finance team keep doing this in Excel?</b>We can, but it already takes about ' + i.hours + ' hours a month, roughly ' + f$(m.parts.contYr) + ' a year, and that grows with every new rep and plan change. Spreadsheets also keep no change log, which is the first thing auditors ask for.</div>' +
+      '<div class="m-qa"><b>What if we wait until next fiscal year?</b>Errors and effort compound while we wait. In CaptivateIQ\'s 2025 survey of more than 200 US incentive compensation leaders, 66% of companies had overpaid or underpaid commissions in the past year. Each quarter of delay also costs about ' + f$(qtrCost) + ' in team time.</div>' +
+      '<div class="m-qa"><b>Why not a cheaper or lighter-weight tool?</b>Seat price is only part of the cost. We should compare the full three-year cost, including implementation and admin time, and confirm the tool handles our mechanics (' + mech.join(', ') + ') without spreadsheet workarounds.</div>' +
+      '<div class="m-qa"><b>What is our fallback if the vendor fails?</b>We would require a current SOC 2 Type II report, a contractual right to export all historical calculations and statements, and keep our plan definitions documented in-house. That keeps us able to switch providers without losing history.</div>' +
+
+      '<h4>What we keep in-house either way</h4><ul class="m-ul"><li>Plan design and incentive strategy</li><li>Definitions of bookings, ARR and new logos</li><li>Approval policy and dispute rules</li></ul>' +
+
+      '<h4>Proposed next steps</h4><ul class="m-ul">' +
+        (m.band.k === 'sbld' || m.band.k === 'lbld'
+          ? '<li>Name the engineering owner and fund the role for three years.</li><li>Scope all six layers (data, plan logic, recompute, controls, rep statements, accounting outputs) before writing code.</li><li>Benchmark our hardest plan against one commission platform, such as Visdum.</li>'
+          : '<li>Shortlist two or three commission platforms. Visdum, for example, goes live in 2 to 4 weeks and connects to ' + esc(i.crm) + ' and ' + esc(i.erp) + '.</li><li>Ask each vendor to build our most complex plan in a live demo.</li><li>Run one past commission cycle in parallel and reconcile it against our current numbers.</li><li>Confirm ASC 340-40 amortization output and data export terms with our controller before signing.</li>') +
+      '</ul>' +
+
+      '<p class="m-foot">Assumptions: $' + Math.round(i.fte/1000) + 'K fully loaded per FTE (BLS median data scientist pay of $120,230, May 2025, divided by wages\' 70% share of total compensation), about $' + Math.round(m.rate) + ' an hour over 2,080 hours; software at $' + i.price + ' per payee per month (CFO Shortlist range $25 to $75); implementation $10K to $30K (CFO Shortlist). Error statistic: CaptivateIQ, 2025 State of Incentive Compensation Management Report. Methodology: Visdum, <a href="' + esc(BLOG) + '">Build vs Buy Commission Software</a> (' + esc(BLOG.replace(/^https?:\/\//,'')) + '). Prepared with the Visdum Build vs Buy Memo Generator.</p>';
+    }
+
+    function render(force){
+      if (edited && !force) { out('editnote').hidden = false; return; }
+      edited = false; out('editnote').hidden = true;
+      out('memo').innerHTML = memoHTML(model());
+    }
+
+    // inputs
+    Array.prototype.forEach.call(root.querySelectorAll('.vm2-inputs input, .vm2-inputs select'), function(el){
+      el.addEventListener('input', function(){ render(false); });
+      el.addEventListener('change', function(){ render(false); });
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('.vm2-seg'), function(g){
+      g.addEventListener('click', function(e){
+        var b = e.target.closest('button'); if (!b) return;
+        Array.prototype.forEach.call(g.querySelectorAll('button'), function(x){ x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+        render(false);
+      });
+    });
+    root.querySelector('.vm2-inputs').addEventListener('submit', function(e){ e.preventDefault(); });
+    out('memo').addEventListener('input', function(){ edited = true; });
+    root.querySelector('[data-a="refresh"]').addEventListener('click', function(){ render(true); });
+
+    // toast
+    function toast(t){ var el = out('toast'); el.textContent = t; setTimeout(function(){ if (el.textContent === t) el.textContent = ''; }, 3200); }
+    function emit(name, detail){ try { root.dispatchEvent(new CustomEvent(name, { detail: detail, bubbles: true })); } catch(x){} }
+
+    // gate
+    var FREE = /@(gmail|googlemail|yahoo|hotmail|outlook|live|msn|aol|icloud|me|proton|protonmail|gmx|yandex|mail|zoho)\./i;
+    out('gate').addEventListener('submit', function(e){
+      e.preventDefault();
+      var em = root.querySelector('[data-g="email"]').value.trim();
+      var err = out('err');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { err.textContent = 'Enter a valid email address.'; return; }
+      if (FREE.test(em)) { err.textContent = 'Use your work email so the memo reaches the right inbox.'; return; }
+      err.textContent = '';
+      var m = model();
+      var payload = { email: em, benchmarkUpdates: root.querySelector('[data-g="bench"]').checked, inputs: m.i, score: m.score, band: m.band.t,
+                      continueTotal: Math.round(m.ct), buildTotal: Math.round(m.bt), buyTotal: Math.round(m.vt) };
+      function unlock(){
+        unlocked = true; email = em;
+        Array.prototype.forEach.call(root.querySelectorAll('[data-lock]'), function(l){ l.hidden = true; });
+        Array.prototype.forEach.call(root.querySelectorAll('[data-x]'), function(b){ b.classList.remove('locked'); });
+        out('gate').hidden = true; out('gateDone').hidden = false; out('emailShown').textContent = em;
+      }
+      emit('visdum:memo-lead', payload);
+      var r; try { r = (typeof window.VisdumMemoGate === 'function') ? window.VisdumMemoGate(payload) : null; } catch(x) { r = null; }
+      if (r && typeof r.then === 'function') { r.then(unlock, unlock); } else { unlock(); }
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('[data-x]'), function(b){ b.classList.add('locked'); });
+
+    // export helpers
+    function memoInner(){ return out('memo').innerHTML; }
+    var DOC_CSS = 'body{font-family:Calibri,Arial,sans-serif;color:#1A1A22;font-size:11pt;line-height:1.45;max-width:720px;margin:32px auto}' +
+      '.m-brand{display:flex;justify-content:space-between;font-size:9pt;letter-spacing:.12em;text-transform:uppercase;color:#686D7A;margin-bottom:10px}.m-brand b{color:#4856DE;font-size:13pt;letter-spacing:0;text-transform:none}' +
+      '.m-hd{border-bottom:2px solid #1A1A22;padding-bottom:10px}.m-meta{display:grid;grid-template-columns:64px 1fr;gap:3px 10px}.m-k{font-weight:bold;color:#686D7A;font-size:9pt;text-transform:uppercase}' +
+      '.m-ph{background:#FBF3E2;color:#8A6417}h4{font-size:10pt;letter-spacing:.08em;text-transform:uppercase;color:#4856DE;margin:18px 0 6px}' +
+      'table{border-collapse:collapse;width:100%;font-size:9.5pt;margin:4px 0 8px}th,td{border-bottom:1px solid #E2DDEF;padding:5px 6px;text-align:right;vertical-align:top}th:first-child,td:first-child,td.l{text-align:left}th{font-size:8pt;text-transform:uppercase;color:#686D7A}tr.tot td{font-weight:bold;border-top:2px solid #1A1A22}' +
+      '.m-qa{margin:0 0 9px}.m-qa b{display:block}.m-foot{margin-top:18px;padding-top:8px;border-top:1px solid #E2DDEF;font-size:8.5pt;color:#686D7A}.m-scale{display:none}' +
+      '.m-track{display:flex;height:8px}.m-track i{display:block;height:8px}';
+    function plainText(){
+      var tmp = document.createElement('div'); tmp.innerHTML = memoInner();
+      var sc = tmp.querySelector('.m-scale'); if (sc) sc.parentNode.removeChild(sc);
+      var lines = [];
+      Array.prototype.forEach.call(tmp.children, function(el){
+        if (el.classList.contains('m-brand')) { lines.push('DECISION MEMO (Visdum)'); return; }
+        if (el.classList.contains('m-hd')) { var s = el.querySelectorAll('.m-meta > span'); for (var j=0;j<s.length;j+=2) lines.push(s[j].textContent.toUpperCase()+': '+s[j+1].textContent); return; }
+        if (el.tagName === 'H4') { lines.push(''); lines.push(el.textContent.toUpperCase()); return; }
+        if (el.tagName === 'UL') { Array.prototype.forEach.call(el.children, function(li){ lines.push('- ' + li.textContent); }); return; }
+        if (el.classList.contains('vm2-tw')) { Array.prototype.forEach.call(el.querySelectorAll('tr'), function(tr){ lines.push(Array.prototype.map.call(tr.children, function(c){ return c.textContent; }).join(' | ')); }); return; }
+        if (el.classList.contains('m-qa')) { var q = el.querySelector('b'); lines.push('Q: ' + q.textContent); lines.push('A: ' + el.textContent.replace(q.textContent,'').trim()); return; }
+        lines.push(el.textContent);
+      });
+      return lines.join('\n');
+    }
+    function docHTML(){ return '<!doctype html><html><head><meta charset="utf-8"><title>Build vs buy memo</title><style>' + DOC_CSS + '</style></head><body>' + memoInner() + '</body></html>'; }
+    function needUnlock(){
+      if (unlocked) return false;
+      toast('Enter your work email below to unlock.');
+      var f = root.querySelector('[data-g="email"]'); f.focus(); f.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block:'center' });
+      return true;
+    }
+    function copyRich(cb){
+      var html = memoInner(), text = plainText();
+      try {
+        if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+          navigator.clipboard.write([ new ClipboardItem({ 'text/html': new Blob([html], {type:'text/html'}), 'text/plain': new Blob([text], {type:'text/plain'}) }) ]).then(function(){ cb(true); }, function(){
+            navigator.clipboard.writeText(text).then(function(){ cb(true); }, function(){ cb(false); });
+          });
+        } else if (navigator.clipboard) { navigator.clipboard.writeText(text).then(function(){ cb(true); }, function(){ cb(false); }); }
+        else cb(false);
+      } catch(x){ cb(false); }
+    }
+    function selectMemo(){ var r = document.createRange(); r.selectNodeContents(out('memo')); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }
+
+    root.querySelector('[data-x="copy"]').addEventListener('click', function(){
+      if (needUnlock()) return;
+      copyRich(function(ok){ if (ok) toast('Memo copied. Paste it into an email, Slack or a doc.'); else { selectMemo(); toast('Memo selected. Press Ctrl+C or Cmd+C to copy.'); } });
+      emit('visdum:memo-export', { format:'copy' });
+    });
+    root.querySelector('[data-x="pdf"]').addEventListener('click', function(){
+      if (needUnlock()) return;
+      if (!EXPORTS) { toast('PDF download works on the live site.'); return; }
+      var w = window.open('', '_blank');
+      if (!w) { toast('Allow pop-ups to save as PDF, or use Copy memo.'); return; }
+      w.document.write(docHTML().replace('</body>', '<script>setTimeout(function(){window.print()},400)<\/script></body>'));
+      w.document.close();
+      emit('visdum:memo-export', { format:'pdf' });
+    });
+    root.querySelector('[data-x="word"]').addEventListener('click', function(){
+      if (needUnlock()) return;
+      if (!EXPORTS) { toast('Word download works on the live site.'); return; }
+      var html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>Build vs buy memo</title><style>' + DOC_CSS + '</style></head><body>' + memoInner() + '</body></html>';
+      var blob = new Blob(['﻿', html], { type:'application/msword' });
+      var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'Build-vs-buy-memo-for-CFO.doc';
+      document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.parentNode.removeChild(a); }, 1000);
+      toast('Word file downloaded. It opens in Word or Google Docs.');
+      emit('visdum:memo-export', { format:'word' });
+    });
+    root.querySelector('[data-x="gdocs"]').addEventListener('click', function(){
+      if (needUnlock()) return;
+      if (!EXPORTS) { toast('Google Docs export works on the live site.'); return; }
+      var w = window.open('https://docs.new', '_blank'); try { if (w) w.opener = null; } catch(x){}
+      copyRich(function(ok){ toast(ok ? 'A new Google Doc is opening. Paste with Ctrl+V or Cmd+V.' : 'Use Copy memo, then paste into the new Google Doc.'); });
+      if (!w) toast('Allow pop-ups, or open docs.new and paste your memo.');
+      emit('visdum:memo-export', { format:'gdocs' });
+    });
+    out('review').addEventListener('click', function(){ emit('visdum:memo-review', { email: email }); });
+
+    render(true);
+  });
+})();
+</script>
